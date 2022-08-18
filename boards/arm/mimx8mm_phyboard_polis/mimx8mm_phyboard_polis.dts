@@ -46,8 +46,6 @@
 		};
 	};
 
-};
-
 /* RS232 / RS485 pinheader on the board */
 &uart1 {
 	status = "disabled";
@@ -91,6 +89,6 @@
 };
 
 &mailbox0 {
-	status = "okay";
+	status = "disabled";
 };
 
