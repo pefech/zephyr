@@ -8,6 +8,10 @@ if BOARD_MIMX8MM_PHYBOARD_POLIS
 config BOARD
 	default "mimx8mm_phyboard_polis"
 
+config I2C_IMX
+	default y
+	depends on I2C
+
 if !XIP
 config FLASH_SIZE
 	default 0

@@ -16,9 +16,9 @@ CONFIG_CONSOLE=y
 CONFIG_PINCTRL=y
 CONFIG_GPIO=y
 
-# config needed to not generate an error, when using remoteproc
+# this is needed to not generate an error, when using remoteproc
 CONFIG_OPENAMP=y
 CONFIG_OPENAMP_RSC_TABLE=y
 
-# has to be y, if M4's TMC should be used
+# When using M4's TCM, this has to be y
 CONFIG_XIP=y

@@ -7,6 +7,10 @@
 /dts-v1/;
 
 #include <nxp/nxp_imx8mm_m4.dtsi>
+#include <zephyr/dt-bindings/interrupt-controller/arm-gic.h>
+#include <zephyr/dt-bindings/clock/imx_ccm.h>
+#include <zephyr/dt-bindings/clock/imx_ccm_rev2.h>
+#include <zephyr/dt-bindings/rdc/imx_rdc.h>
 #include "mimx8mm_phyboard_polis-pinctrl.dtsi"
 
 / {
@@ -46,6 +50,24 @@
 		};
 	};
 
+};
+
+&soc {
+	i2c1: i2c@30a20000 {
+		compatible = "fsl,imx21-i2c";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0x30a20000 0x10000>; 
+		interrupts = <37 0>;
+		rdc = <(RDC_DOMAIN_PERM(A7_DOMAIN_ID,\
+					       RDC_DOMAIN_PERM_RW)|\
+			       RDC_DOMAIN_PERM(M4_DOMAIN_ID,\
+					       RDC_DOMAIN_PERM_RW))>;
+		clocks = <&ccm IMX_CCM_LPI2C1_CLK 0x2 36>;
+		status = "okay";
+	};
+};
+
 /* RS232 / RS485 pinheader on the board */
 &uart1 {
 	status = "disabled";
@@ -81,7 +103,7 @@
 };
 
 /*
- * needs to be configured, so the leds don't generate an error,
+ * needs to be configured, so using the leds don't generate an error,
  * but does not interfer with the A53-Core 
  */
 &gpio1 {

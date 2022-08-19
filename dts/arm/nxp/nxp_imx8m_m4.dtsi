@@ -22,7 +22,7 @@
 		};
 	};
 
-	soc {
+	soc: soc {
 		tcml_code: code@1ffe0000 {
 			compatible = "nxp,imx-itcm";
 			reg = <0x1ffe0000 DT_SIZE_K(128)>;
