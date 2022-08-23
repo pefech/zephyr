@@ -1966,7 +1966,7 @@ int bt_conn_le_start_encryption(struct bt_conn *conn, uint8_t rand[8],
 #endif /* CONFIG_BT_SMP */
 
 #if defined(CONFIG_BT_SMP) || defined(CONFIG_BT_BREDR)
-uint8_t bt_conn_enc_key_size(struct bt_conn *conn)
+uint8_t bt_conn_enc_key_size(const struct bt_conn *conn)
 {
 	if (!conn->encrypt) {
 		return 0;
@@ -2111,12 +2111,12 @@ int bt_conn_set_security(struct bt_conn *conn, bt_security_t sec)
 	return err;
 }
 
-bt_security_t bt_conn_get_security(struct bt_conn *conn)
+bt_security_t bt_conn_get_security(const struct bt_conn *conn)
 {
 	return conn->sec_level;
 }
 #else
-bt_security_t bt_conn_get_security(struct bt_conn *conn)
+bt_security_t bt_conn_get_security(const struct bt_conn *conn)
 {
 	return BT_SECURITY_L1;
 }
@@ -2283,6 +2283,13 @@ int bt_conn_get_info(const struct bt_conn *conn, struct bt_conn_info *info)
 	info->role = conn->role;
 	info->id = conn->id;
 	info->state = conn_internal_to_public_state(conn->state);
+	info->security.flags = 0;
+	info->security.level = bt_conn_get_security(conn);
+#if defined(CONFIG_BT_SMP) || defined(CONFIG_BT_BREDR)
+	info->security.enc_key_size = bt_conn_enc_key_size(conn);
+#else
+	info->security.enc_key_size = 0;
+#endif /* CONFIG_BT_SMP || CONFIG_BT_BREDR */
 
 	switch (conn->type) {
 	case BT_CONN_TYPE_LE:
@@ -2304,6 +2311,12 @@ int bt_conn_get_info(const struct bt_conn *conn, struct bt_conn_info *info)
 #if defined(CONFIG_BT_USER_DATA_LEN_UPDATE)
 		info->le.data_len = &conn->le.data_len;
 #endif
+		if (conn->le.keys && (conn->le.keys->flags & BT_KEYS_SC)) {
+			info->security.flags |= BT_SECURITY_FLAG_SC;
+		}
+		if (conn->le.keys && (conn->le.keys->flags & BT_KEYS_OOB)) {
+			info->security.flags |= BT_SECURITY_FLAG_OOB;
+		}
 		return 0;
 #if defined(CONFIG_BT_BREDR)
 	case BT_CONN_TYPE_BR:
@@ -3026,16 +3039,28 @@ int bt_conn_init(void)
 }
 
 #if defined(CONFIG_BT_DF_CONNECTION_CTE_RX)
-void bt_hci_le_df_connection_iq_report(struct net_buf *buf)
+void bt_hci_le_df_connection_iq_report_common(uint8_t event, struct net_buf *buf)
 {
 	struct bt_df_conn_iq_samples_report iq_report;
 	struct bt_conn *conn;
 	struct bt_conn_cb *cb;
 	int err;
 
-	err = hci_df_prepare_connection_iq_report(buf, &iq_report, &conn);
-	if (err) {
-		BT_ERR("Prepare CTE conn IQ report failed %d", err);
+	if (event == BT_HCI_EVT_LE_CONNECTION_IQ_REPORT) {
+		err = hci_df_prepare_connection_iq_report(buf, &iq_report, &conn);
+		if (err) {
+			BT_ERR("Prepare CTE conn IQ report failed %d", err);
+			return;
+		}
+	} else if (IS_ENABLED(CONFIG_BT_DF_VS_CONN_IQ_REPORT_16_BITS_IQ_SAMPLES) &&
+		   event == BT_HCI_EVT_VS_LE_CONNECTION_IQ_REPORT) {
+		err = hci_df_vs_prepare_connection_iq_report(buf, &iq_report, &conn);
+		if (err) {
+			BT_ERR("Prepare CTE conn IQ report failed %d", err);
+			return;
+		}
+	} else {
+		BT_ERR("Unhandled VS connection IQ report");
 		return;
 	}
 
@@ -3054,6 +3079,18 @@ void bt_hci_le_df_connection_iq_report(struct net_buf *buf)
 
 	bt_conn_unref(conn);
 }
+
+void bt_hci_le_df_connection_iq_report(struct net_buf *buf)
+{
+	bt_hci_le_df_connection_iq_report_common(BT_HCI_EVT_LE_CONNECTION_IQ_REPORT, buf);
+}
+
+#if defined(CONFIG_BT_DF_VS_CONN_IQ_REPORT_16_BITS_IQ_SAMPLES)
+void bt_hci_le_vs_df_connection_iq_report(struct net_buf *buf)
+{
+	bt_hci_le_df_connection_iq_report_common(BT_HCI_EVT_VS_LE_CONNECTION_IQ_REPORT, buf);
+}
+#endif /* CONFIG_BT_DF_VS_CONN_IQ_REPORT_16_BITS_IQ_SAMPLES */
 #endif /* CONFIG_BT_DF_CONNECTION_CTE_RX */
 
 #if defined(CONFIG_BT_DF_CONNECTION_CTE_REQ)

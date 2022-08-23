@@ -28,7 +28,6 @@
 #define LPTIM (LPTIM_TypeDef *) DT_INST_REG_ADDR(0)
 
 #if DT_INST_NUM_CLOCKS(0) == 1
-#warning Kconfig for LPTIM source clock (LSI/LSE) is deprecated, use device tree.
 static const struct stm32_pclken lptim_clk[] = {
 	STM32_CLOCK_INFO(0, DT_DRV_INST(0)),
 	/* Use Kconfig to configure source clocks fields */
@@ -43,7 +42,7 @@ static const struct stm32_pclken lptim_clk[] = {
 static const struct stm32_pclken lptim_clk[] = STM32_DT_INST_CLOCKS(0);
 #endif
 
-static const struct device *clk_ctrl = DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE);
+static const struct device *const clk_ctrl = DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE);
 
 /*
  * Assumptions and limitations:

@@ -97,7 +97,7 @@ class TestPlan:
         sub_tests = self.options.sub_test
         if sub_tests:
             for subtest in sub_tests:
-                _subtests = self.get_testcase(subtest)
+                _subtests = self.get_testsuite(subtest)
                 for _subtest in _subtests:
                     self.run_individual_testsuite.append(_subtest.name)
 
@@ -371,16 +371,27 @@ class TestPlan:
                         if not "@" in platform.name:
                             tmp_dir = os.listdir(os.path.dirname(file))
                             for item in tmp_dir:
-                                result = re.match(f"{platform.name}_(?P<revision>.*)\\.conf", item)
-                                if result:
-                                    revision = result.group("revision")
-                                    yaml_file = f"{platform.name}_{revision}.yaml"
-                                    if yaml_file not in tmp_dir:
-                                        platform_revision = copy.deepcopy(platform)
-                                        revision = revision.replace("_", ".")
-                                        platform_revision.name = f"{platform.name}@{revision}"
-                                        platform_revision.default = False
-                                        self.platforms.append(platform_revision)
+                                # Need to make sure the revision matches
+                                # the permitted patterns as described in
+                                # cmake/modules/extensions.cmake.
+                                revision_patterns = ["[A-Z]",
+                                                     "[0-9]+",
+                                                     "(0|[1-9][0-9]*)(_[0-9]+)*(_[0-9]+)*"]
+
+                                for pattern in revision_patterns:
+                                    result = re.match(f"{platform.name}_(?P<revision>{pattern})\\.conf", item)
+                                    if result:
+                                        revision = result.group("revision")
+                                        yaml_file = f"{platform.name}_{revision}.yaml"
+                                        if yaml_file not in tmp_dir:
+                                            platform_revision = copy.deepcopy(platform)
+                                            revision = revision.replace("_", ".")
+                                            platform_revision.name = f"{platform.name}@{revision}"
+                                            platform_revision.default = False
+                                            self.platforms.append(platform_revision)
+
+                                        break
+
 
                 except RuntimeError as e:
                     logger.error("E: %s: can't load: %s" % (file, e))
@@ -392,7 +403,7 @@ class TestPlan:
         testcases = []
         for _, ts in self.testsuites.items():
             for case in ts.testcases:
-                testcases.append(case)
+                testcases.append(case.name)
 
         return testcases
 
@@ -793,7 +804,7 @@ class TestPlan:
         results = []
         for _, ts in self.testsuites.items():
             for case in ts.testcases:
-                if case == identifier:
+                if case.name == identifier:
                     results.append(ts)
         return results
 

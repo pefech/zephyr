@@ -95,7 +95,42 @@ mapping:
     type: seq
     sequence:
       - type: str
+  blobs:
+    required: false
+    type: seq
+    sequence:
+      - type: map
+        mapping:
+          path:
+            required: true
+            type: str
+          sha256:
+            required: true
+            type: str
+          type:
+            required: true
+            type: str
+            enum: ['img', 'lib']
+          version:
+            required: true
+            type: str
+          license-path:
+            required: true
+            type: str
+          url:
+            required: true
+            type: str
+          description:
+            required: true
+            type: str
+          doc-url:
+            required: false
+            type: str
 '''
+
+MODULE_YML_PATH = PurePath('zephyr/module.yml')
+# Path to the blobs folder
+MODULE_BLOBS_PATH = PurePath('zephyr/blobs')
 
 schema = yaml.safe_load(METADATA_SCHEMA)
 
@@ -114,11 +149,11 @@ def validate_setting(setting, module_path, filename=None):
 def process_module(module):
     module_path = PurePath(module)
 
-    # The input is a module if zephyr/module.yml is a valid yaml file
+    # The input is a module if zephyr/module.{yml,yaml} is a valid yaml file
     # or if both zephyr/CMakeLists.txt and zephyr/Kconfig are present.
 
-    for module_yml in [module_path.joinpath('zephyr/module.yml'),
-                       module_path.joinpath('zephyr/module.yaml')]:
+    for module_yml in [module_path / MODULE_YML_PATH,
+                       module_path / MODULE_YML_PATH.with_suffix('.yaml')]:
         if Path(module_yml).is_file():
             with Path(module_yml).open('r') as f:
                 meta = yaml.safe_load(f.read())
