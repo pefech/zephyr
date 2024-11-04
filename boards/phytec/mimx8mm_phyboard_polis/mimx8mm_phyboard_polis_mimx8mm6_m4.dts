@@ -45,6 +45,15 @@
 		};
 	};
 
+	reg_can_en: regulator-can-en {
+		compatible = "regulator-fixed";
+		enable-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+
+		regulator-name = "can_en";
+		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <1800000>;
+		regulator-always-on;
+	};
 };
 
 &ecspi1 {
@@ -61,7 +70,7 @@
 		reg = <0>;
 		spi-max-frequency = <20000000>;
 		int-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
-		supply-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+		vin-supply = <&reg_can_en>;
 		osc-freq = <40000000>;
 		status = "disabled";
 	};
@@ -121,5 +130,22 @@
 };
 
 &mailbox0 {
+	status = "okay";
+};
+
+
+&ecspi1 {
+	status = "okay";
+};
+
+&gpio2 {
+	status = "okay";
+};
+
+&gpio5 {
+	status = "okay";
+};
+
+&mcp2518 {
 	status = "okay";
 };

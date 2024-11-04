@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2023 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+ / {
+	chosen {
+		/*
+		 * shared memory reserved for the inter-processor communication
+		 */
+		zephyr,ipc_shm = &vdev0ring0;
+		zephyr,ipc = &mailbox0;
+	};
+
+    vdev0ring0: vdev0@B8000000 {
+        compatible = "shared-dma-pool";
+        reg = <0 0xb8000000 0 0x8000>;
+        no-map;
+    };
+};
+
+&mailbox0 {
+	status = "okay";
+};
