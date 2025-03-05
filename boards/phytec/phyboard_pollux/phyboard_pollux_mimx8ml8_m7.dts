@@ -7,6 +7,9 @@
 /dts-v1/;
 
 #include <nxp/nxp_imx8ml_m7.dtsi>
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 #include "phyboard_pollux-pinctrl.dtsi"
 
 / {
@@ -20,6 +23,10 @@
 
 		zephyr,console = &uart4;
 		zephyr,shell-uart = &uart4;
+	};
+
+	aliases {
+		sw0 = &button0;
 	};
 
 	soc {
@@ -51,6 +58,14 @@
 			status = "disabled";
 		};
 	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+				gpios = < &gpio2 7 (GPIO_PULL_UP | GPIO_ACTIVE_LOW) >;
+				zephyr,code = <INPUT_KEY_0>;
+		};
+	};
 };
 
 /*
@@ -61,6 +76,17 @@
 	current-speed = <115200>;
 	pinctrl-0 = <&uart4_default>;
 	pinctrl-names = "default";
+};
+
+&i2c2 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c2_default>;
+	pinctrl-names = "default";
+};
+
+&gpio2 {
+	status = "okay";
 };
 
 &mailbox0 {
