@@ -89,8 +89,8 @@ int main(void)
 
 		for (int i = 0; i < 7; i++)
 		{
-			k_sleep(K_MSEC(500));
 			i2c_reg_write_byte(i2c_dev, 0x62, led_register, color_list[i]);
+			k_sleep(K_MSEC(500));
 		}
 
 		/* Turn off all LEDs */
