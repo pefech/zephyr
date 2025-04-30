@@ -63,6 +63,23 @@
 	pinctrl-names = "default";
 };
 
+/* Used for TPM module SLB9670 (currentl no Zephyr support) */
+&ecspi1 {
+	status = "disabled";
+	pinctrl-0 = <&ecspi1_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio5 9 0>;
+};
+
+/* On expansion header X6 */
+&ecspi2 {
+	status = "disabled";
+	pinctrl-0 = <&ecspi2_default>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio5 13 0>;
+};
+
+
 &mailbox0 {
 	status = "okay";
 };

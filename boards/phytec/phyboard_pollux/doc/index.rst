@@ -72,6 +72,9 @@ features:
 | GPIO      | on-chip    | GPIO output                        |
 |           |            | GPIO input                         |
 +-----------+------------+------------------------------------+
+| SPI       | on-chip    | imx-ecspi                          |
++-----------+------------+------------------------------------+
+
 
 The default configuration can be found in the defconfig file:
 :zephyr_file:`boards/phytec/phyboard_pollux/phyboard_pollux_mimx8ml8_m7_defconfig`.
@@ -109,6 +112,24 @@ The pinmuxing for the GPIOs is the standard pinmuxing of the mimx8mp devicetree
 created by NXP and can be found at
 :zephyr_file:`dts/arm/nxp/nxp_imx8ml_m7.dtsi`. The Pinout of the phyBOARD-Polis
 can be found at the `PHYTEC website`_.
+
+SPI
+---
+
+ECSPI2 is available on the expansion connector X6.
+
++----------+----------+
+| Pin Name | Function |
++==========+==========+
+| X6_43    | SCLK     |
++----------+----------+
+| X6_45    | MOSI     |
++----------+----------+
+| X6_47    | MISO     |
++----------+----------+
+| X6_49    | SS0      |
++----------+----------+
+
 
 Programming and Debugging
 *************************
