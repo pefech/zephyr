@@ -30,6 +30,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <zephyr/device.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,10 +63,18 @@ typedef int (*eeprom_api_write)(const struct device *dev, off_t offset,
  */
 typedef size_t (*eeprom_api_size)(const struct device *dev);
 
+/**
+ * @brief Callback API upon getting the EEPROM uid
+ * See @a eeprom_get_uid() for argument description
+ */
+typedef size_t (*eeprom_api_uid)(const struct device *dev, void *uid_buf, size_t len);
+
 __subsystem struct eeprom_driver_api {
 	eeprom_api_read read;
 	eeprom_api_write write;
 	eeprom_api_size size;
+	/* optional callbacks */
+	eeprom_api_uid uid;
 };
 
 /** @endcond */
@@ -131,6 +140,31 @@ static inline size_t z_impl_eeprom_get_size(const struct device *dev)
 
 	return api->size(dev);
 }
+
+/**
+ * @brief Get the UID of the EEPROM in specified length
+ *
+ * @param dev EEPROM device
+ * @param uid_buf The buffer to read the UID to
+ * @param len The len of the UID to read in bytes
+ *
+ * @return 0 on success, negative errno code on failure.
+ */
+__syscall size_t eeprom_get_uid(const struct device *dev, void *uid_buf, size_t len);
+
+static inline size_t z_impl_eeprom_get_uid(const struct device *dev, void *uid_buf, size_t len)
+{
+	const struct eeprom_driver_api *api =
+		(const struct eeprom_driver_api *)dev->api;
+
+	/* as uid is a optional functionality, return ENOSUP if not available */
+	if (api->uid == NULL) {
+		return -ENOTSUP;
+	}
+
+	return api->uid(dev, uid_buf, len);
+}
+
 
 #ifdef __cplusplus
 }

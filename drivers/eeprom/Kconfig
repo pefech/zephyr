@@ -22,6 +22,12 @@ config EEPROM_INIT_PRIORITY
 	  priority is used unless the driver implementation has its own
 	  initialization priority.
 
+config EEPROM_HAS_UID
+	bool "EEPROM has UID integrated"
+	default n
+	help
+		Enabled for EEPROMs that have a special UID region programmed.
+
 config EEPROM_SHELL
 	bool "EEPROM shell"
 	depends on SHELL
