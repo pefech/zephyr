@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  IPC service backend over the RPMsg virtio device of an OpenAMP remoteproc
+  remote.
+
+  Use it on a core that a host - typically Linux, through remoteproc and
+  virtio_rpmsg_bus - loads and sets up from the core's resource table. The
+  virtio device, its vrings and the resource table are described by the
+  openamp,rpmsg-virtio-device node this refers to; this node only exposes that
+  device through the IPC service API.
+
+  Endpoints are announced through the RPMsg name service under the name they
+  are registered with; Linux binds the name "rpmsg-raw" to rpmsg_char, which
+  creates /dev/rpmsgN. An endpoint is bound when the host first sends it a
+  message, since only then is the host's address known.
+
+  Endpoint callbacks run on the RPMsg device's receive thread, whose priority
+  is set by RPMSG_VDEV_THREAD_PRIORITY.
+
+compatible: "zephyr,ipc-rproc-rpmsg"
+
+include: base.yaml
+
+properties:
+  rpmsg-device:
+    type: phandle
+    required: true
+    description: The openamp,rpmsg-virtio-device node this instance uses.

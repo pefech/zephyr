@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config IPC_SERVICE_BACKEND_RPROC_RPMSG
+	bool "OpenAMP remoteproc RPMsg backend"
+	default y
+	depends on IPC_SERVICE
+	depends on OPENAMP_RPMSG_VDEV
+	depends on DT_HAS_ZEPHYR_IPC_RPROC_RPMSG_ENABLED
+	help
+	  IPC service backend over the RPMsg virtio device of a remoteproc
+	  remote: a core whose host, typically Linux, loads it and sets up the
+	  virtio device from its resource table. Endpoints are announced
+	  through the RPMsg name service.
+
+if IPC_SERVICE_BACKEND_RPROC_RPMSG
+
+config IPC_SERVICE_BACKEND_RPROC_RPMSG_NUM_ENDPOINTS
+	int "Endpoints per instance"
+	default 2
+	help
+	  Maximum number of endpoints registered on one instance.
+
+config IPC_SERVICE_BACKEND_RPROC_RPMSG_TX_WAIT_MS
+	int "Transmit buffer wait (ms)"
+	default 100
+	help
+	  How long ipc_service_send() waits for a free transmit buffer before
+	  returning -ENOMEM. The wait polls the used ring and needs no other
+	  thread, so it is safe from a received() callback, but it does delay
+	  whatever called it.
+
+endif # IPC_SERVICE_BACKEND_RPROC_RPMSG
