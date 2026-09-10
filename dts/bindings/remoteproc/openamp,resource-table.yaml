@@ -23,3 +23,13 @@ properties:
     description: |
       Phandles to virtio device nodes associated with the OpenAMP
       resource table.
+
+  memory-region:
+    type: phandle
+    description: |
+      Phandle to a memory region the resource table is copied into before
+      first use. Set it when the host reads and updates the table at a fixed
+      address rather than where the image linked it - Linux's i.MX
+      remoteproc driver does, at its "rsc-table" reserved-memory node - so
+      that the remote sees the virtio device status the host writes there.
+      Without it the table is used in place.

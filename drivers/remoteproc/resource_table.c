@@ -27,6 +27,9 @@
  *   https://github.com/OpenAMP/open-amp/wiki/OpenAMP-Life-Cycle-Management
  */
 
+#include <string.h>
+
+#include <zephyr/cache.h>
 #include <zephyr/kernel.h>
 
 #include <zephyr/linker/devicetree_regions.h>
@@ -161,12 +164,44 @@ struct fw_resource_table {
 #if NUM_VDEVS > 0
 #define VDEV_LUT_ENTRY(node_id, prop, idx)                                                         \
 	{.index = DT_REG_ADDR(DT_PHANDLE_BY_IDX(node_id, prop, idx)),                              \
-	 &resource_table.VDEV_INDEX(idx).vdev},
+	 offsetof(struct fw_resource_table, VDEV_INDEX(idx).vdev)},
 
-static struct {
+static const struct {
 	unsigned int index;
-	struct fw_rsc_vdev *vdev;
+	size_t offset;
 } vdev_lut[] = {DT_FOREACH_PROP_ELEM(RESOURCE_TABLE_NODE, vdevs, VDEV_LUT_ENTRY)};
+#endif
+
+#if DT_NODE_HAS_PROP(RESOURCE_TABLE_NODE, memory_region)
+/*
+ * Some hosts do not read the table where the image linked it. Linux's i.MX
+ * remoteproc driver, for one, copies the table into a fixed reserved region and
+ * then reads and writes that copy: it is where the virtio device status the
+ * remote waits on appears. The table is copied there before first use, and
+ * every lookup below then points into the copy.
+ */
+#define RSC_TABLE_REGION DT_PHANDLE(RESOURCE_TABLE_NODE, memory_region)
+
+BUILD_ASSERT(sizeof(resource_table) <= DT_REG_SIZE(RSC_TABLE_REGION),
+	     "resource table does not fit its memory-region");
+
+static struct fw_resource_table *rsc_table_get(void)
+{
+	static struct fw_resource_table *loaded;
+
+	if (loaded == NULL) {
+		loaded = (struct fw_resource_table *)DT_REG_ADDR(RSC_TABLE_REGION);
+		memcpy(loaded, &resource_table, sizeof(resource_table));
+		sys_cache_data_flush_range(loaded, sizeof(resource_table));
+	}
+
+	return loaded;
+}
+#else
+static struct fw_resource_table *rsc_table_get(void)
+{
+	return &resource_table;
+}
 #endif
 
 void *z_rproc_rsc_table(size_t *size)
@@ -175,13 +210,13 @@ void *z_rproc_rsc_table(size_t *size)
 		*size = sizeof(resource_table);
 	}
 
-	return &resource_table;
+	return rsc_table_get();
 }
 
 struct fw_rsc_carveout *z_rproc_get_carveout_by_name(const char *name)
 {
 #if NUM_CARVEOUTS > 0
-	struct fw_resource_table *rsc_table = &resource_table;
+	struct fw_resource_table *rsc_table = rsc_table_get();
 
 	for (int i = 0; i < NUM_CARVEOUTS; i++) {
 		if (strcmp(rsc_table->carveouts[i].name, name) == 0) {
@@ -195,7 +230,7 @@ struct fw_rsc_carveout *z_rproc_get_carveout_by_name(const char *name)
 struct fw_rsc_carveout *z_rproc_get_carveout_by_index(unsigned int idx)
 {
 #if NUM_CARVEOUTS > 0
-	struct fw_resource_table *rsc_table = &resource_table;
+	struct fw_resource_table *rsc_table = rsc_table_get();
 
 	if (idx >= NUM_CARVEOUTS) {
 		return NULL;
@@ -212,7 +247,8 @@ struct fw_rsc_vdev *z_rproc_get_vdev(unsigned int idx)
 #if NUM_VDEVS > 0
 	for (int i = 0; i < NUM_VDEVS; i++) {
 		if (vdev_lut[i].index == idx) {
-			return vdev_lut[i].vdev;
+			return (struct fw_rsc_vdev *)((uint8_t *)rsc_table_get() +
+						      vdev_lut[i].offset);
 		}
 	}
 #endif
