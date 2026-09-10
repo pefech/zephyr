@@ -57,6 +57,23 @@ static int rvdev_notify(void *priv, uint32_t id)
 {
 	const struct device *dev = priv;
 	const struct rvdev_config *config = dev->config;
+	int mtu = mbox_mtu_get_dt(&config->mbox_tx);
+
+	/*
+	 * A channel that carries data sends the notify id, as the host's
+	 * mailbox driver may only listen for data messages on it: Linux's i.MX
+	 * remoteproc driver, for one, takes vring kicks on the MU's data
+	 * channel, and a bare signal arrives on a different interrupt. A
+	 * signal-only channel sends a signal.
+	 */
+	if (mtu > 0) {
+		struct mbox_msg msg = {
+			.data = &id,
+			.size = MIN((size_t)mtu, sizeof(id)),
+		};
+
+		return mbox_send_dt(&config->mbox_tx, &msg);
+	}
 
 	return mbox_send_dt(&config->mbox_tx, NULL);
 }
