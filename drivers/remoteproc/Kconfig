@@ -14,6 +14,7 @@ config OPENAMP_RESOURCE_TABLE
 	imply OPENAMP
 	default y
 	depends on DT_HAS_OPENAMP_RESOURCE_TABLE_ENABLED
+	depends on !OPENAMP_RSC_TABLE
 	help
 	  Include the OpenAMP resource table in the generated binary.
 
