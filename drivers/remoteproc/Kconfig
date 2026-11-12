@@ -27,6 +27,7 @@ config OPENAMP_RPMSG_VDEV
 	imply OPENAMP
 	default y
 	depends on DT_HAS_OPENAMP_RPMSG_VIRTIO_DEVICE_ENABLED
+	select MBOX
 	help
 	  Enable the driver for the OpenAMP RPMsg VirtIO device.
 
