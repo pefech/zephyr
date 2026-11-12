@@ -204,6 +204,13 @@ static int rvdev_init(const struct device *dev)
 		return -1;
 	}
 
+	/*
+	 * The host assigns the vring addresses and notify ids and writes them
+	 * into the resource table before it sets DRIVER_OK. Read them only
+	 * afterwards: the values linked into the image may be placeholders.
+	 */
+	rproc_virtio_wait_remote_ready(data->vdev);
+
 	ret = rproc_virtio_init_vring(data->vdev, 0, rsc_vrings[0]->notifyid,
 				      (void *)rsc_vrings[0]->da, &data->cr_vring_tx.region,
 				      rsc_vrings[0]->num, rsc_vrings[0]->align);
@@ -216,11 +223,9 @@ static int rvdev_init(const struct device *dev)
 				      (void *)rsc_vrings[1]->da, &data->cr_vring_rx.region,
 				      rsc_vrings[1]->num, rsc_vrings[1]->align);
 	if (ret) {
-		LOG_ERR("failed to init vring 0");
+		LOG_ERR("failed to init vring 1");
 		return ret;
 	}
-
-	rproc_virtio_wait_remote_ready(data->vdev);
 
 	ret = rpmsg_init_vdev(&data->rvdev, data->vdev, rpmsg_ns_bind_callback,
 			      &data->cr_buffer.region, NULL);
