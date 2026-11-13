@@ -27,3 +27,11 @@ properties:
     type: phandle
     required: true
     description: The openamp,rpmsg-virtio-device node this instance uses.
+
+  rpmsg-shell:
+    type: boolean
+    description: |
+      Run the Zephyr shell on this instance, as an RPMsg channel announced
+      under CONFIG_SHELL_RPMSG_SERVICE_NAME ("rpmsg-tty" by default, which
+      Linux binds to rpmsg_tty as /dev/ttyRPMSGn). Requires
+      CONFIG_SHELL_BACKEND_RPMSG. At most one instance can set it.

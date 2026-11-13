@@ -31,6 +31,10 @@
 #include <openamp/rpmsg.h>
 #include <openamp/rpmsg_virtio.h>
 
+#ifdef CONFIG_SHELL_BACKEND_RPMSG
+#include <zephyr/shell/shell_rpmsg.h>
+#endif
+
 LOG_MODULE_REGISTER(ipc_rproc_rpmsg, CONFIG_IPC_SERVICE_LOG_LEVEL);
 
 #define NUM_ENDPOINTS CONFIG_IPC_SERVICE_BACKEND_RPROC_RPMSG_NUM_ENDPOINTS
@@ -50,6 +54,7 @@ struct rproc_rpmsg_ept {
 
 struct backend_config {
 	const struct device *rvdev;
+	bool rpmsg_shell;
 };
 
 struct backend_data {
@@ -386,12 +391,37 @@ static const struct ipc_service_backend backend_ops = {
 	.release_rx_buffer = release_rx_buffer,
 };
 
+#ifdef CONFIG_SHELL_BACKEND_RPMSG
+#define RPMSG_SHELL_COUNT(i) + DT_INST_PROP(i, rpmsg_shell)
+
+BUILD_ASSERT((0 DT_INST_FOREACH_STATUS_OKAY(RPMSG_SHELL_COUNT)) <= 1,
+	     "Only one instance can have the rpmsg-shell property");
+
+static void start_rpmsg_shell(struct rpmsg_device *rdev)
+{
+	int ret = shell_backend_rpmsg_init_transport(rdev);
+
+	if (ret < 0) {
+		LOG_ERR("RPMsg shell init failed: %d", ret);
+	}
+}
+#endif
+
 static int backend_init(const struct device *instance)
 {
+	const struct backend_config *conf = instance->config;
 	struct backend_data *data = instance->data;
 
 	k_mutex_init(&data->mtx);
 	atomic_set(&data->state, STATE_READY);
+
+#ifdef CONFIG_SHELL_BACKEND_RPMSG
+	if (conf->rpmsg_shell && device_is_ready(conf->rvdev)) {
+		start_rpmsg_shell(z_rproc_get_rpmsg_device(conf->rvdev));
+	}
+#else
+	ARG_UNUSED(conf);
+#endif
 
 	return 0;
 }
@@ -399,6 +429,7 @@ static int backend_init(const struct device *instance)
 #define DEFINE_BACKEND_DEVICE(i)                                                                   \
 	static const struct backend_config backend_config_##i = {                                  \
 		.rvdev = DEVICE_DT_GET(DT_INST_PHANDLE(i, rpmsg_device)),                          \
+		.rpmsg_shell = DT_INST_PROP(i, rpmsg_shell),                                       \
 	};                                                                                         \
 	static struct backend_data backend_data_##i;                                               \
 	DEVICE_DT_INST_DEFINE(i, backend_init, NULL, &backend_data_##i, &backend_config_##i,       \
