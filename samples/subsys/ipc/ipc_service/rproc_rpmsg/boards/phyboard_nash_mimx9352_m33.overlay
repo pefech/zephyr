@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 2026 PHYTEC Messtechnik GmbH
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Shared memory and mailbox used by the Linux imx_rproc driver with the
+ * PHYTEC imx93-phycore-rpmsg overlays. The carveout names must match the
+ * Linux reserved-memory node names, Linux pairs them by name.
+ */
+
+/ {
+	chosen {
+		openamp,resource-table = &rsc_tbl;
+	};
+
+	ipc0: ipc {
+		compatible = "zephyr,ipc-rproc-rpmsg";
+		rpmsg-device = <&vdev0>;
+		rpmsg-shell;
+	};
+
+	vdev0vring0: memory@a4000000 {
+		compatible = "zephyr,memory-region";
+		zephyr,memory-region = "vdev0vring0";
+		reg = <0xa4000000 0x8000>;
+	};
+
+	vdev0vring1: memory@a4008000 {
+		compatible = "zephyr,memory-region";
+		zephyr,memory-region = "vdev0vring1";
+		reg = <0xa4008000 0x8000>;
+	};
+
+	vdevbuffer: memory@a4020000 {
+		compatible = "zephyr,memory-region";
+		zephyr,memory-region = "vdevbuffer";
+		reg = <0xa4020000 0x100000>;
+	};
+
+	remoteproc {
+		rsc_tbl: resource_table {
+			compatible = "openamp,resource-table";
+			carveouts = <&vdev0vring0 &vdev0vring1 &vdevbuffer>;
+			vdevs = <&vdev0>;
+		};
+
+		vrings {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			vdev0_tx: vring@0 {
+				compatible = "openamp,vring";
+				reg = <0>;
+				#vring-cells = <0>;
+				notify-id = <0>;
+				memory-region = <&vdev0vring0>;
+				num-buffers = <8>;
+				mboxes = <&mu1 1>;
+			};
+
+			vdev0_rx: vring@1 {
+				compatible = "openamp,vring";
+				reg = <1>;
+				#vring-cells = <0>;
+				notify-id = <1>;
+				memory-region = <&vdev0vring1>;
+				num-buffers = <8>;
+				mboxes = <&mu1 1>;
+			};
+		};
+
+		vdevs {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			vdev0: vdev@0 {
+				compatible = "openamp,rpmsg-virtio-device";
+				reg = <0>;
+				vrings = <&vdev0_tx &vdev0_rx>;
+				vring-names = "tx", "rx";
+				memory-region = <&vdevbuffer>;
+			};
+		};
+	};
+};
+
+&mu1 {
+	status = "okay";
+};

@@ -1,0 +1,24 @@
+/*
+ * Copyright (c) PHYTEC Messtechnik GmbH
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Resource table at the fixed address the PHYTEC imx93-phycore-rpmsg
+ * "rsc-table" overlay reserves (0x2021e000 seen from the Cortex-A55). Use it
+ * when the core is started by the bootloader and Linux attaches to it.
+ */
+
+&dtcm {
+	reg = <0x20000000 DT_SIZE_K(120)>;
+};
+
+/ {
+	rsc_table_region: memory@2001e000 {
+		compatible = "zephyr,memory-region";
+		zephyr,memory-region = "RSC_TABLE";
+		reg = <0x2001e000 DT_SIZE_K(4)>;
+	};
+};
+
+&rsc_tbl {
+	memory-region = <&rsc_table_region>;
+};

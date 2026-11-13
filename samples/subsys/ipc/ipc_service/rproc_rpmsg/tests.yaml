@@ -1,0 +1,22 @@
+sample:
+  description: Respond to the Linux rpmsg client sample and rpmsg tty drivers
+    and provide a shell over RPMsg, on a core managed by Linux remoteproc.
+  name: IPC service remoteproc RPMsg backend
+common:
+  build_only: true
+  filter: dt_compat_enabled("zephyr,ipc-rproc-rpmsg")
+  platform_allow:
+    - phyboard_nash/mimx9352/m33
+  integration_platforms:
+    - phyboard_nash/mimx9352/m33
+  tags:
+    - ipc
+    - openamp
+tests:
+  sample.ipc.rproc_rpmsg: {}
+  sample.ipc.rproc_rpmsg.rsc_table:
+    extra_args:
+      - EXTRA_DTC_OVERLAY_FILE="boards/phyboard_nash_mimx9352_m33_rsc_table.overlay"
+  sample.ipc.rproc_rpmsg.ram_console:
+    extra_args:
+      - EXTRA_CONF_FILE="ram_console.conf"
