@@ -12,6 +12,7 @@
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/sys/slist.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,9 +84,40 @@ struct fw_rsc_vdev *z_rproc_get_vdev(unsigned int idx);
  *
  * @param dev Pointer to the Zephyr device instance.
  *
- * @return Pointer to the RPMsg device, or NULL if not available.
+ * @return Pointer to the RPMsg device, or NULL if the host has not set the
+ *         device up yet.
  */
 struct rpmsg_device *z_rproc_get_rpmsg_device(const struct device *dev);
+
+/**
+ * @brief Callback for the RPMsg device becoming usable
+ *
+ * The host sets the virtio device up at any time after Zephyr has started,
+ * e.g. only when Linux attaches to a core started by a bootloader.
+ */
+struct z_rproc_rpmsg_ready_cb {
+	/** @cond INTERNAL_HIDDEN */
+	sys_snode_t node;
+	/** @endcond */
+	/** Called once with the RPMsg device; may create endpoints. */
+	void (*handler)(const struct device *dev, struct rpmsg_device *rdev, void *user_data);
+	/** Passed to @a handler. */
+	void *user_data;
+};
+
+/**
+ * @brief Register a callback for the RPMsg device becoming usable
+ *
+ * The handler runs once: from the driver thread when the host has set the
+ * device up, or from the caller when that has already happened.
+ *
+ * @param dev Pointer to the Zephyr device instance.
+ * @param cb Callback, must stay valid until it has run.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL @a cb or its handler is NULL.
+ */
+int z_rproc_rpmsg_add_ready_cb(const struct device *dev, struct z_rproc_rpmsg_ready_cb *cb);
 
 #endif /* CONFIG_OPENAMP_RPMSG_VDEV */
 

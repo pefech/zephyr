@@ -50,6 +50,9 @@ struct rproc_rpmsg_ept {
 	void *priv;
 	atomic_t bound;
 	bool used;
+	/* The RPMsg endpoint exists; until the host is ready it is pending. */
+	bool created;
+	char name[RPMSG_NAME_SIZE];
 };
 
 struct backend_config {
@@ -59,6 +62,8 @@ struct backend_config {
 
 struct backend_data {
 	struct rproc_rpmsg_ept ept[NUM_ENDPOINTS];
+	struct z_rproc_rpmsg_ready_cb ready_cb;
+	/* Set once the host has set the RPMsg device up. */
 	struct rpmsg_device *rdev;
 	struct k_mutex mtx;
 	atomic_t state;
@@ -94,6 +99,25 @@ static void ept_unbind_cb(struct rpmsg_endpoint *ep)
 	}
 }
 
+/* Called with data->mtx held and data->rdev set. */
+static int create_ept(struct backend_data *data, struct rproc_rpmsg_ept *ept)
+{
+	int ret;
+
+	/* A destination of RPMSG_ADDR_ANY is what makes OpenAMP announce it. */
+	ret = rpmsg_create_ept(&ept->ep, data->rdev, ept->name, RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
+			       ept_cb, ept_unbind_cb);
+	if (ret) {
+		LOG_ERR("rpmsg_create_ept(%s) failed: %d", ept->name, ret);
+		return -EIO;
+	}
+
+	ept->created = true;
+	LOG_DBG("endpoint %s at 0x%x announced", ept->name, ept->ep.addr);
+
+	return 0;
+}
+
 static int open(const struct device *instance)
 {
 	const struct backend_config *conf = instance->config;
@@ -103,22 +127,15 @@ static int open(const struct device *instance)
 		return -EALREADY;
 	}
 
-	/*
-	 * The remoteproc driver finishes initializing only once the host has
-	 * set the virtio device up, so a ready device is a live link.
-	 */
 	if (!device_is_ready(conf->rvdev)) {
 		atomic_set(&data->state, STATE_READY);
 		return -ENODEV;
 	}
 
-	data->rdev = z_rproc_get_rpmsg_device(conf->rvdev);
-	data->tx_buffer_size = rpmsg_virtio_get_tx_buffer_size(data->rdev);
-	if (data->tx_buffer_size <= 0) {
-		atomic_set(&data->state, STATE_READY);
-		return -EINVAL;
-	}
-
+	/*
+	 * The host may set the RPMsg device up only later. Endpoints registered
+	 * before that are announced once it has, see rdev_ready().
+	 */
 	atomic_set(&data->state, STATE_INITED);
 	return 0;
 }
@@ -139,7 +156,6 @@ static int close(const struct device *instance)
 	}
 
 	/* The remoteproc driver owns the device; there is nothing to tear down. */
-	data->rdev = NULL;
 	atomic_set(&data->state, STATE_READY);
 	return 0;
 }
@@ -174,24 +190,25 @@ static int register_ept(const struct device *instance, void **token,
 	}
 
 	ept->used = true;
+	ept->created = false;
 	ept->cb = cfg->cb;
 	ept->priv = cfg->priv;
 	atomic_set(&ept->bound, 0);
 	ept->ep.priv = ept;
+	strncpy(ept->name, cfg->name, sizeof(ept->name) - 1);
+	ept->name[sizeof(ept->name) - 1] = '\0';
 
-	/* A destination of RPMSG_ADDR_ANY is what makes OpenAMP announce it. */
-	ret = rpmsg_create_ept(&ept->ep, data->rdev, cfg->name, RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
-			       ept_cb, ept_unbind_cb);
-	if (ret) {
-		ept->used = false;
-		k_mutex_unlock(&data->mtx);
-		LOG_ERR("rpmsg_create_ept(%s) failed: %d", cfg->name, ret);
-		return -EIO;
+	if (data->rdev != NULL) {
+		ret = create_ept(data, ept);
+		if (ret < 0) {
+			ept->used = false;
+			k_mutex_unlock(&data->mtx);
+			return ret;
+		}
 	}
 
 	k_mutex_unlock(&data->mtx);
 
-	LOG_DBG("endpoint %s at 0x%x announced", cfg->name, ept->ep.addr);
 	*token = ept;
 	return 0;
 }
@@ -210,9 +227,12 @@ static int deregister_ept(const struct device *instance, void *token)
 	}
 
 	k_mutex_lock(&data->mtx, K_FOREVER);
-	/* Tells the host, which removes the channel and its device node. */
-	ept->ep.priv = NULL;
-	rpmsg_destroy_ept(&ept->ep);
+	if (ept->created) {
+		/* Tells the host, which removes the channel and its device node. */
+		ept->ep.priv = NULL;
+		rpmsg_destroy_ept(&ept->ep);
+		ept->created = false;
+	}
 	atomic_set(&ept->bound, 0);
 	ept->used = false;
 	k_mutex_unlock(&data->mtx);
@@ -295,6 +315,10 @@ static int get_tx_buffer_size(const struct device *instance, void *token)
 
 	ARG_UNUSED(token);
 
+	if (data->rdev == NULL) {
+		return -EBUSY;
+	}
+
 	return data->tx_buffer_size;
 }
 
@@ -307,6 +331,10 @@ static int get_tx_buffer(const struct device *instance, void *token, void **r_da
 
 	if (!ept || !ept->used) {
 		return -ENOENT;
+	}
+
+	if (!ept->created) {
+		return -EBUSY;
 	}
 
 	if (!r_data || !size) {
@@ -407,6 +435,39 @@ static void start_rpmsg_shell(struct rpmsg_device *rdev)
 }
 #endif
 
+static void rdev_ready(const struct device *rvdev, struct rpmsg_device *rdev, void *user_data)
+{
+	const struct device *instance = user_data;
+	const struct backend_config *conf = instance->config;
+	struct backend_data *data = instance->data;
+
+	ARG_UNUSED(rvdev);
+
+	k_mutex_lock(&data->mtx, K_FOREVER);
+
+	data->tx_buffer_size = rpmsg_virtio_get_tx_buffer_size(rdev);
+	data->rdev = rdev;
+
+#ifdef CONFIG_SHELL_BACKEND_RPMSG
+	/* Announced first, so the shell is the first channel of the instance. */
+	if (conf->rpmsg_shell) {
+		start_rpmsg_shell(rdev);
+	}
+#else
+	ARG_UNUSED(conf);
+#endif
+
+	for (int i = 0; i < NUM_ENDPOINTS; i++) {
+		struct rproc_rpmsg_ept *ept = &data->ept[i];
+
+		if (ept->used && !ept->created && create_ept(data, ept) < 0) {
+			ept->used = false;
+		}
+	}
+
+	k_mutex_unlock(&data->mtx);
+}
+
 static int backend_init(const struct device *instance)
 {
 	const struct backend_config *conf = instance->config;
@@ -415,15 +476,10 @@ static int backend_init(const struct device *instance)
 	k_mutex_init(&data->mtx);
 	atomic_set(&data->state, STATE_READY);
 
-#ifdef CONFIG_SHELL_BACKEND_RPMSG
-	if (conf->rpmsg_shell && device_is_ready(conf->rvdev)) {
-		start_rpmsg_shell(z_rproc_get_rpmsg_device(conf->rvdev));
-	}
-#else
-	ARG_UNUSED(conf);
-#endif
+	data->ready_cb.handler = rdev_ready;
+	data->ready_cb.user_data = (void *)instance;
 
-	return 0;
+	return z_rproc_rpmsg_add_ready_cb(conf->rvdev, &data->ready_cb);
 }
 
 #define DEFINE_BACKEND_DEVICE(i)                                                                   \

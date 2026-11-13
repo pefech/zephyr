@@ -107,11 +107,13 @@ static int lb_rpmsg_format_set(const struct log_backend *backend, uint32_t log_t
 	return 0;
 }
 
-static void lb_rpmsg_init(const struct log_backend *backend)
+static void rdev_ready(const struct device *dev, struct rpmsg_device *rdev, void *user_data)
 {
-	struct rpmsg_device *rdev = z_rproc_get_rpmsg_device(rvdev);
 	uint32_t dest_addr = RPMSG_ADDR_ANY;
 	int ret;
+
+	ARG_UNUSED(dev);
+	ARG_UNUSED(user_data);
 
 #if DT_REG_HAS_IDX(EPT_NODE, 1)
 	dest_addr = DT_REG_ADDR_BY_IDX(EPT_NODE, 1);
@@ -123,6 +125,18 @@ static void lb_rpmsg_init(const struct log_backend *backend)
 	if (ret) {
 		return;
 	}
+}
+
+static void lb_rpmsg_init(const struct log_backend *backend)
+{
+	static struct z_rproc_rpmsg_ready_cb ready_cb = {
+		.handler = rdev_ready,
+	};
+
+	ARG_UNUSED(backend);
+
+	/* The endpoint is created once the host has set the RPMsg device up. */
+	(void)z_rproc_rpmsg_add_ready_cb(rvdev, &ready_cb);
 }
 
 const struct log_backend_api log_backend_rpmsg_api = {

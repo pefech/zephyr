@@ -41,6 +41,10 @@ struct rvdev_config {
 
 struct rvdev_data {
 	struct virtio_device *vdev;
+	/* Protects ready and ready_cbs. */
+	struct k_mutex lock;
+	sys_slist_t ready_cbs;
+	bool ready;
 	struct rpmsg_virtio_device rvdev;
 	struct k_thread thread;
 	struct k_sem sem;
@@ -99,6 +103,61 @@ static void mbox_callback(const struct device *dev, uint32_t channel, void *user
 	k_sem_give(sem);
 }
 
+static int rvdev_start(const struct device *dev)
+{
+	const struct rvdev_config *config = dev->config;
+	struct rvdev_data *data = dev->data;
+	const struct fw_rsc_vdev *rsc_vdev = z_rproc_get_vdev(config->idx);
+	const struct fw_rsc_vdev_vring *rsc_vrings = rsc_vdev->vring;
+	int ret;
+
+	/*
+	 * The host assigns the vring addresses and notify ids and writes them
+	 * into the resource table before it sets DRIVER_OK. Read them only
+	 * afterwards: the values linked into the image may be placeholders.
+	 */
+	rproc_virtio_wait_remote_ready(data->vdev);
+
+	ret = rproc_virtio_init_vring(data->vdev, 0, rsc_vrings[0].notifyid,
+				      (void *)rsc_vrings[0].da, &data->cr_vring_tx.region,
+				      rsc_vrings[0].num, rsc_vrings[0].align);
+	if (ret) {
+		LOG_ERR("failed to init vring 0");
+		return ret;
+	}
+
+	ret = rproc_virtio_init_vring(data->vdev, 1, rsc_vrings[1].notifyid,
+				      (void *)rsc_vrings[1].da, &data->cr_vring_rx.region,
+				      rsc_vrings[1].num, rsc_vrings[1].align);
+	if (ret) {
+		LOG_ERR("failed to init vring 1");
+		return ret;
+	}
+
+	ret = rpmsg_init_vdev(&data->rvdev, data->vdev, rpmsg_ns_bind_callback,
+			      &data->cr_buffer.region, NULL);
+	if (ret) {
+		LOG_ERR("rpmsg_init_vdev failed %d", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void rvdev_set_ready(const struct device *dev)
+{
+	struct rvdev_data *data = dev->data;
+	struct rpmsg_device *rdev = rpmsg_virtio_get_rpmsg_device(&data->rvdev);
+	struct z_rproc_rpmsg_ready_cb *cb;
+
+	k_mutex_lock(&data->lock, K_FOREVER);
+	data->ready = true;
+	SYS_SLIST_FOR_EACH_CONTAINER(&data->ready_cbs, cb, node) {
+		cb->handler(dev, rdev, cb->user_data);
+	}
+	k_mutex_unlock(&data->lock);
+}
+
 static void rvdev_rx_thread(void *dev_ptr, void *p2, void *p3)
 {
 	const struct device *dev = dev_ptr;
@@ -106,6 +165,13 @@ static void rvdev_rx_thread(void *dev_ptr, void *p2, void *p3)
 
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
+
+	/* Waiting for the host here keeps it out of the system initialization. */
+	if (rvdev_start(dev) != 0) {
+		return;
+	}
+
+	rvdev_set_ready(dev);
 
 	for (;;) {
 		k_sem_take(&data->sem, data->poll_time);
@@ -137,7 +203,6 @@ static int rvdev_init(const struct device *dev)
 	size_t rsc_table_size;
 	void *rsc_table = z_rproc_rsc_table(&rsc_table_size);
 	const struct fw_rsc_vdev *rsc_vdev = z_rproc_get_vdev(config->idx);
-	const struct fw_rsc_vdev_vring *rsc_vrings[2];
 
 	int ret;
 	k_tid_t tid;
@@ -152,9 +217,8 @@ static int rvdev_init(const struct device *dev)
 		return -EBADE;
 	}
 
-	rsc_vrings[0] = &rsc_vdev->vring[0];
-
-	rsc_vrings[1] = &rsc_vdev->vring[1];
+	k_mutex_init(&data->lock);
+	sys_slist_init(&data->ready_cbs);
 
 	data->poll_time = K_MSEC(10);
 
@@ -204,37 +268,6 @@ static int rvdev_init(const struct device *dev)
 		return -1;
 	}
 
-	/*
-	 * The host assigns the vring addresses and notify ids and writes them
-	 * into the resource table before it sets DRIVER_OK. Read them only
-	 * afterwards: the values linked into the image may be placeholders.
-	 */
-	rproc_virtio_wait_remote_ready(data->vdev);
-
-	ret = rproc_virtio_init_vring(data->vdev, 0, rsc_vrings[0]->notifyid,
-				      (void *)rsc_vrings[0]->da, &data->cr_vring_tx.region,
-				      rsc_vrings[0]->num, rsc_vrings[0]->align);
-	if (ret) {
-		LOG_ERR("failed to init vring 0");
-		return ret;
-	}
-
-	ret = rproc_virtio_init_vring(data->vdev, 1, rsc_vrings[1]->notifyid,
-				      (void *)rsc_vrings[1]->da, &data->cr_vring_rx.region,
-				      rsc_vrings[1]->num, rsc_vrings[1]->align);
-	if (ret) {
-		LOG_ERR("failed to init vring 1");
-		return ret;
-	}
-
-	ret = rpmsg_init_vdev(&data->rvdev, data->vdev, rpmsg_ns_bind_callback,
-			      &data->cr_buffer.region, NULL);
-
-	if (ret) {
-		LOG_ERR("rpmsg_init_vdev failed\r\n");
-		return ret;
-	}
-
 	tid = k_thread_create(&data->thread, data->stack, K_THREAD_STACK_SIZEOF(data->stack),
 			      rvdev_rx_thread, (void *)dev, NULL, NULL,
 			      CONFIG_RPMSG_VDEV_THREAD_PRIORITY, 0, K_NO_WAIT);
@@ -247,8 +280,34 @@ static int rvdev_init(const struct device *dev)
 struct rpmsg_device *z_rproc_get_rpmsg_device(const struct device *dev)
 {
 	struct rvdev_data *data = dev->data;
+	struct rpmsg_device *rdev = NULL;
 
-	return rpmsg_virtio_get_rpmsg_device(&data->rvdev);
+	k_mutex_lock(&data->lock, K_FOREVER);
+	if (data->ready) {
+		rdev = rpmsg_virtio_get_rpmsg_device(&data->rvdev);
+	}
+	k_mutex_unlock(&data->lock);
+
+	return rdev;
+}
+
+int z_rproc_rpmsg_add_ready_cb(const struct device *dev, struct z_rproc_rpmsg_ready_cb *cb)
+{
+	struct rvdev_data *data = dev->data;
+
+	if (cb == NULL || cb->handler == NULL) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&data->lock, K_FOREVER);
+	if (data->ready) {
+		cb->handler(dev, rpmsg_virtio_get_rpmsg_device(&data->rvdev), cb->user_data);
+	} else {
+		sys_slist_append(&data->ready_cbs, &cb->node);
+	}
+	k_mutex_unlock(&data->lock);
+
+	return 0;
 }
 
 #define VDEV_VRING_BY_NAME(inst, name) DT_INST_PHANDLE_BY_NAME(inst, vrings, name)
